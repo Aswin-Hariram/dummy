@@ -1,0 +1,448 @@
+// Main Application Class
+package com.examly.springapp;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class SpringappApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(SpringappApplication.class, args);
+    }
+}
+
+// ParkingSlot Model
+package com.examly.springapp.model;
+
+import javax.persistence.*;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Positive;
+
+@Entity
+@Table(name = "parking_slots")
+public class ParkingSlot {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @NotBlank(message = "Slot number is required")
+    @Column(unique = true)
+    private String slotNumber;
+
+    @NotBlank(message = "Slot type is required")
+    private String slotType;
+
+    @NotNull(message = "Availability status is required")
+    private Boolean isAvailable;
+
+    @NotNull(message = "Hourly rate is required")
+    @Positive(message = "Hourly rate must be positive")
+    private Double hourlyRate;
+
+    // Constructors
+    public ParkingSlot() {}
+
+    public ParkingSlot(Long id, String slotNumber, String slotType, Boolean isAvailable, Double hourlyRate) {
+        this.id = id;
+        this.slotNumber = slotNumber;
+        this.slotType = slotType;
+        this.isAvailable = isAvailable;
+        this.hourlyRate = hourlyRate;
+    }
+
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getSlotNumber() { return slotNumber; }
+    public void setSlotNumber(String slotNumber) { this.slotNumber = slotNumber; }
+
+    public String getSlotType() { return slotType; }
+    public void setSlotType(String slotType) { this.slotType = slotType; }
+
+    public Boolean getIsAvailable() { return isAvailable; }
+    public void setIsAvailable(Boolean isAvailable) { this.isAvailable = isAvailable; }
+
+    public Double getHourlyRate() { return hourlyRate; }
+    public void setHourlyRate(Double hourlyRate) { this.hourlyRate = hourlyRate; }
+}
+
+// Booking Model
+package com.examly.springapp.model;
+
+import javax.persistence.*;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "bookings")
+public class Booking {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @NotNull(message = "User ID is required")
+    private Long userId;
+
+    @NotNull(message = "Parking slot is required")
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "parking_slot_id")
+    private ParkingSlot parkingSlot;
+
+    @NotBlank(message = "Vehicle number is required")
+    private String vehicleNumber;
+
+    @NotNull(message = "Start time is required")
+    private LocalDateTime startTime;
+
+    @NotNull(message = "End time is required")
+    private LocalDateTime endTime;
+
+    private Double totalCost;
+
+    private String status;
+
+    // Constructors
+    public Booking() {}
+
+    public Booking(Long id, Long userId, ParkingSlot parkingSlot, String vehicleNumber, 
+                   LocalDateTime startTime, LocalDateTime endTime, Double totalCost, String status) {
+        this.id = id;
+        this.userId = userId;
+        this.parkingSlot = parkingSlot;
+        this.vehicleNumber = vehicleNumber;
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.totalCost = totalCost;
+        this.status = status;
+    }
+
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
+
+    public ParkingSlot getParkingSlot() { return parkingSlot; }
+    public void setParkingSlot(ParkingSlot parkingSlot) { this.parkingSlot = parkingSlot; }
+
+    public String getVehicleNumber() { return vehicleNumber; }
+    public void setVehicleNumber(String vehicleNumber) { this.vehicleNumber = vehicleNumber; }
+
+    public LocalDateTime getStartTime() { return startTime; }
+    public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }
+
+    public LocalDateTime getEndTime() { return endTime; }
+    public void setEndTime(LocalDateTime endTime) { this.endTime = endTime; }
+
+    public Double getTotalCost() { return totalCost; }
+    public void setTotalCost(Double totalCost) { this.totalCost = totalCost; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+}
+
+// ParkingSlot Repository
+package com.examly.springapp.repository;
+
+import com.examly.springapp.model.ParkingSlot;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ParkingSlotRepository extends JpaRepository<ParkingSlot, Long> {
+    boolean existsBySlotNumber(String slotNumber);
+}
+
+// Booking Repository
+package com.examly.springapp.repository;
+
+import com.examly.springapp.model.Booking;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.List;
+
+@Repository
+public interface BookingRepository extends JpaRepository<Booking, Long> {
+    List<Booking> findByUserId(Long userId);
+}
+
+// Error Response DTO
+package com.examly.springapp.dto;
+
+public class ErrorResponse {
+    private String message;
+    private int status;
+
+    public ErrorResponse(String message, int status) {
+        this.message = message;
+        this.status = status;
+    }
+
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+
+    public int getStatus() { return status; }
+    public void setStatus(int status) { this.status = status; }
+}
+
+// ParkingSlot Controller
+package com.examly.springapp.controller;
+
+import com.examly.springapp.dto.ErrorResponse;
+import com.examly.springapp.model.ParkingSlot;
+import com.examly.springapp.repository.ParkingSlotRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import javax.validation.Valid;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/slots")
+@CrossOrigin
+public class ParkingSlotController {
+
+    @Autowired
+    private ParkingSlotRepository parkingSlotRepository;
+
+    @GetMapping
+    public ResponseEntity<List<ParkingSlot>> getAllParkingSlots() {
+        List<ParkingSlot> slots = parkingSlotRepository.findAll();
+        return ResponseEntity.ok(slots);
+    }
+
+    @PostMapping
+    public ResponseEntity<?> createParkingSlot(@Valid @RequestBody ParkingSlot parkingSlot) {
+        try {
+            // Check if slot number already exists
+            if (parkingSlotRepository.existsBySlotNumber(parkingSlot.getSlotNumber())) {
+                return ResponseEntity.badRequest()
+                    .body(new ErrorResponse("Slot number already exists", 400));
+            }
+
+            ParkingSlot savedSlot = parkingSlotRepository.save(parkingSlot);
+            return ResponseEntity.status(HttpStatus.CREATED).body(savedSlot);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(new ErrorResponse("Error creating parking slot", 400));
+        }
+    }
+}
+
+// Booking Controller
+package com.examly.springapp.controller;
+
+import com.examly.springapp.dto.ErrorResponse;
+import com.examly.springapp.model.Booking;
+import com.examly.springapp.repository.BookingRepository;
+import com.examly.springapp.repository.ParkingSlotRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import javax.validation.Valid;
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+
+@RestController
+@RequestMapping("/api/bookings")
+@CrossOrigin
+public class BookingController {
+
+    @Autowired
+    private BookingRepository bookingRepository;
+
+    @Autowired
+    private ParkingSlotRepository parkingSlotRepository;
+
+    @PostMapping
+    public ResponseEntity<?> createBooking(@Valid @RequestBody Booking booking) {
+        try {
+            // Validation checks
+            if (booking.getVehicleNumber() == null || booking.getVehicleNumber().trim().isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body(new ErrorResponse("Vehicle number is required", 400));
+            }
+
+            if (booking.getEndTime().isBefore(booking.getStartTime())) {
+                return ResponseEntity.badRequest()
+                    .body(new ErrorResponse("End time must be after start time", 400));
+            }
+
+            if (!booking.getParkingSlot().getIsAvailable()) {
+                return ResponseEntity.badRequest()
+                    .body(new ErrorResponse("Parking slot is not available", 400));
+            }
+
+            // Calculate total cost
+            Duration duration = Duration.between(booking.getStartTime(), booking.getEndTime());
+            long hours = duration.toHours();
+            if (duration.toMinutes() % 60 > 0) {
+                hours++; // Round up for partial hours
+            }
+            double totalCost = hours * booking.getParkingSlot().getHourlyRate();
+
+            booking.setTotalCost(totalCost);
+            booking.setStatus("Confirmed");
+
+            Booking savedBooking = bookingRepository.save(booking);
+            return ResponseEntity.status(HttpStatus.CREATED).body(savedBooking);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(new ErrorResponse("Error creating booking", 400));
+        }
+    }
+
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<Booking>> getUserBookings(@PathVariable Long userId) {
+        List<Booking> bookings = bookingRepository.findByUserId(userId);
+        return ResponseEntity.ok(bookings);
+    }
+
+    @PutMapping("/{bookingId}/cancel")
+    public ResponseEntity<?> cancelBooking(@PathVariable Long bookingId) {
+        try {
+            Optional<Booking> optionalBooking = bookingRepository.findById(bookingId);
+            
+            if (!optionalBooking.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            Booking booking = optionalBooking.get();
+            
+            if ("Cancelled".equals(booking.getStatus())) {
+                return ResponseEntity.badRequest()
+                    .body(new ErrorResponse("Booking is already cancelled", 400));
+            }
+
+            booking.setStatus("Cancelled");
+            Booking updatedBooking = bookingRepository.save(booking);
+            return ResponseEntity.ok(updatedBooking);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(new ErrorResponse("Error cancelling booking", 400));
+        }
+    }
+}
+
+// Global Exception Handler
+package com.examly.springapp.exception;
+
+import com.examly.springapp.dto.ErrorResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getAllErrors().forEach((error) -> {
+            String fieldName = ((FieldError) error).getField();
+            String errorMessage = error.getDefaultMessage();
+            errors.put(fieldName, errorMessage);
+        });
+        
+        String message = errors.values().iterator().next(); // Get first error message
+        return ResponseEntity.badRequest().body(new ErrorResponse(message, 400));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(new ErrorResponse("Internal server error", 500));
+    }
+}
+
+// Application Properties (application.properties)
+# Database Configuration
+spring.datasource.url=jdbc:h2:mem:testdb
+spring.datasource.driverClassName=org.h2.Driver
+spring.datasource.username=sa
+spring.datasource.password=
+
+# JPA Configuration
+spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# H2 Console (for development)
+spring.h2.console.enabled=true
+spring.h2.console.path=/h2-console
+
+# Server Configuration
+server.port=8080
+
+# Maven Dependencies (pom.xml)
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" 
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.7.0</version>
+        <relativePath/>
+    </parent>
+    <groupId>com.examly</groupId>
+    <artifactId>springapp</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>springapp</name>
+    <description>Parking Slot Booking System</description>
+    <properties>
+        <java.version>11</java.version>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
