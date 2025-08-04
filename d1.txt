@@ -1,0 +1,722 @@
+// package.json
+{
+  "name": "parking-booking-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@testing-library/jest-dom": "^5.16.4",
+    "@testing-library/react": "^13.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "axios": "^1.4.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^5.16.4"
+  }
+}
+
+// src/utils/api.js
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8080/api';
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Parking Slots API
+export const getParkingSlots = () => api.get('/slots');
+export const getAvailableSlots = () => api.get('/slots/available');
+export const createParkingSlot = (slot) => api.post('/slots', slot);
+
+// Bookings API
+export const createBooking = (booking) => api.post('/bookings', booking);
+export const getUserBookings = (userId) => api.get(`/bookings/user/${userId}`);
+export const getAllBookings = () => api.get('/bookings');
+export const cancelBooking = (bookingId) => api.put(`/bookings/${bookingId}/cancel`);
+
+export default api;
+
+// src/components/BookingForm.js
+import React, { useState, useEffect } from 'react';
+import { createBooking } from '../utils/api';
+
+const BookingForm = ({ slot, onBooked }) => {
+  const [formData, setFormData] = useState({
+    vehicleNumber: '',
+    startTime: '',
+    endTime: ''
+  });
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [estimatedCost, setEstimatedCost] = useState(0);
+
+  // Calculate estimated cost whenever times change
+  useEffect(() => {
+    if (formData.startTime && formData.endTime && slot) {
+      const start = new Date(formData.startTime);
+      const end = new Date(formData.endTime);
+      
+      if (end > start) {
+        const diffInMs = end - start;
+        const diffInHours = diffInMs / (1000 * 60 * 60);
+        const roundedHours = Math.ceil(diffInHours); // Round up for partial hours
+        const cost = roundedHours * slot.hourlyRate;
+        setEstimatedCost(cost);
+      } else {
+        setEstimatedCost(0);
+      }
+    }
+  }, [formData.startTime, formData.endTime, slot]);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    setError(''); // Clear error when user types
+  };
+
+  const validateForm = () => {
+    if (!formData.vehicleNumber.trim()) {
+      return 'Vehicle number is required';
+    }
+
+    if (!formData.startTime || !formData.endTime) {
+      return 'Start time and end time are required';
+    }
+
+    const startTime = new Date(formData.startTime);
+    const endTime = new Date(formData.endTime);
+    const now = new Date();
+
+    if (startTime < now) {
+      return 'Start time cannot be in the past';
+    }
+
+    if (endTime <= startTime) {
+      return 'End time must be after start time';
+    }
+
+    return null;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const bookingData = {
+        userId: 1, // Default user ID for demo
+        slot: slot,
+        vehicleNumber: formData.vehicleNumber,
+        startTime: formData.startTime,
+        endTime: formData.endTime
+      };
+
+      const response = await createBooking(bookingData);
+      onBooked(response.data);
+      
+      // Reset form
+      setFormData({
+        vehicleNumber: '',
+        startTime: '',
+        endTime: ''
+      });
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || 'Failed to create booking';
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="booking-form">
+      <h3>Book Parking Slot {slot?.slotNumber}</h3>
+      <p>Type: {slot?.slotType} | Rate: ${slot?.hourlyRate}/hour</p>
+      
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="vehicleNumber">Vehicle Number:</label>
+          <input
+            type="text"
+            id="vehicleNumber"
+            name="vehicleNumber"
+            value={formData.vehicleNumber}
+            onChange={handleInputChange}
+            data-testid="vehicle-input"
+            placeholder="Enter vehicle number"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="startTime">Start Time:</label>
+          <input
+            type="datetime-local"
+            id="startTime"
+            name="startTime"
+            value={formData.startTime}
+            onChange={handleInputChange}
+            data-testid="start-time-input"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="endTime">End Time:</label>
+          <input
+            type="datetime-local"
+            id="endTime"
+            name="endTime"
+            value={formData.endTime}
+            onChange={handleInputChange}
+            data-testid="end-time-input"
+          />
+        </div>
+
+        {estimatedCost > 0 && (
+          <div className="cost-display">
+            <strong data-testid="cost">Estimated Cost: ${estimatedCost.toFixed(2)}</strong>
+          </div>
+        )}
+
+        {error && (
+          <div className="error-message" data-testid="form-error">
+            {error}
+          </div>
+        )}
+
+        <button 
+          type="submit" 
+          disabled={isLoading}
+          data-testid="book-btn"
+          className="submit-button"
+        >
+          {isLoading ? 'Booking...' : 'Book Slot'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+export default BookingForm;
+
+// src/components/ParkingSlotList.js
+import React, { useState, useEffect } from 'react';
+import { getAvailableSlots } from '../utils/api';
+import BookingForm from './BookingForm';
+
+const ParkingSlotList = () => {
+  const [slots, setSlots] = useState([]);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchAvailableSlots();
+  }, []);
+
+  const fetchAvailableSlots = async () => {
+    try {
+      setLoading(true);
+      const response = await getAvailableSlots();
+      setSlots(response.data);
+    } catch (err) {
+      setError('Failed to fetch available slots');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSlotSelect = (slot) => {
+    setSelectedSlot(slot);
+  };
+
+  const handleBookingSuccess = (booking) => {
+    alert(`Booking successful! Booking ID: ${booking.id}`);
+    setSelectedSlot(null);
+    fetchAvailableSlots(); // Refresh the list
+  };
+
+  if (loading) return <div>Loading available slots...</div>;
+  if (error) return <div className="error">{error}</div>;
+
+  return (
+    <div className="parking-slots-container">
+      <h2>Available Parking Slots</h2>
+      
+      {!selectedSlot && (
+        <div className="slots-grid">
+          {slots.length === 0 ? (
+            <p>No available slots</p>
+          ) : (
+            slots.map(slot => (
+              <div key={slot.id} className="slot-card">
+                <h3>Slot {slot.slotNumber}</h3>
+                <p>Type: {slot.slotType}</p>
+                <p>Rate: ${slot.hourlyRate}/hour</p>
+                <button 
+                  onClick={() => handleSlotSelect(slot)}
+                  className="select-button"
+                >
+                  Select Slot
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {selectedSlot && (
+        <div className="booking-section">
+          <button 
+            onClick={() => setSelectedSlot(null)}
+            className="back-button"
+          >
+            ← Back to Slots
+          </button>
+          <BookingForm 
+            slot={selectedSlot} 
+            onBooked={handleBookingSuccess}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ParkingSlotList;
+
+// src/components/BookingList.js
+import React, { useState, useEffect } from 'react';
+import { getUserBookings, cancelBooking } from '../utils/api';
+
+const BookingList = ({ userId = 1 }) => {
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchUserBookings();
+  }, [userId]);
+
+  const fetchUserBookings = async () => {
+    try {
+      setLoading(true);
+      const response = await getUserBookings(userId);
+      setBookings(response.data);
+    } catch (err) {
+      setError('Failed to fetch bookings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelBooking = async (bookingId) => {
+    if (!window.confirm('Are you sure you want to cancel this booking?')) {
+      return;
+    }
+
+    try {
+      await cancelBooking(bookingId);
+      fetchUserBookings(); // Refresh the list
+      alert('Booking cancelled successfully');
+    } catch (err) {
+      alert('Failed to cancel booking');
+    }
+  };
+
+  const formatDateTime = (dateTimeString) => {
+    return new Date(dateTimeString).toLocaleString();
+  };
+
+  if (loading) return <div>Loading bookings...</div>;
+  if (error) return <div className="error">{error}</div>;
+
+  return (
+    <div className="bookings-container">
+      <h2>My Bookings</h2>
+      
+      {bookings.length === 0 ? (
+        <p>No bookings found</p>
+      ) : (
+        <div className="bookings-list">
+          {bookings.map(booking => (
+            <div key={booking.id} className="booking-card">
+              <div className="booking-header">
+                <h3>Booking #{booking.id}</h3>
+                <span className={`status ${booking.status.toLowerCase()}`}>
+                  {booking.status}
+                </span>
+              </div>
+              
+              <div className="booking-details">
+                <p><strong>Slot:</strong> {booking.slot.slotNumber} ({booking.slot.slotType})</p>
+                <p><strong>Vehicle:</strong> {booking.vehicleNumber}</p>
+                <p><strong>Start:</strong> {formatDateTime(booking.startTime)}</p>
+                <p><strong>End:</strong> {formatDateTime(booking.endTime)}</p>
+                <p><strong>Total Cost:</strong> ${booking.totalCost?.toFixed(2)}</p>
+              </div>
+
+              {booking.status === 'Confirmed' && (
+                <button 
+                  onClick={() => handleCancelBooking(booking.id)}
+                  className="cancel-button"
+                >
+                  Cancel Booking
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default BookingList;
+
+// src/App.js
+import React, { useState } from 'react';
+import ParkingSlotList from './components/ParkingSlotList';
+import BookingList from './components/BookingList';
+import './App.css';
+
+function App() {
+  const [activeTab, setActiveTab] = useState('slots');
+
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>Parking Booking System</h1>
+        <nav className="nav-tabs">
+          <button 
+            className={activeTab === 'slots' ? 'active' : ''}
+            onClick={() => setActiveTab('slots')}
+          >
+            Available Slots
+          </button>
+          <button 
+            className={activeTab === 'bookings' ? 'active' : ''}
+            onClick={() => setActiveTab('bookings')}
+          >
+            My Bookings
+          </button>
+        </nav>
+      </header>
+
+      <main className="App-main">
+        {activeTab === 'slots' && <ParkingSlotList />}
+        {activeTab === 'bookings' && <BookingList />}
+      </main>
+    </div>
+  );
+}
+
+export default App;
+
+// src/App.css
+.App {
+  text-align: center;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.App-header {
+  margin-bottom: 30px;
+}
+
+.App-header h1 {
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.nav-tabs button {
+  padding: 10px 20px;
+  border: 2px solid #007bff;
+  background: white;
+  color: #007bff;
+  cursor: pointer;
+  border-radius: 5px;
+  font-size: 16px;
+}
+
+.nav-tabs button.active,
+.nav-tabs button:hover {
+  background: #007bff;
+  color: white;
+}
+
+/* Parking Slots */
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.slot-card {
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  background: #f9f9f9;
+}
+
+.slot-card h3 {
+  margin: 0 0 10px 0;
+  color: #333;
+}
+
+.select-button {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.select-button:hover {
+  background: #218838;
+}
+
+/* Booking Form */
+.booking-form {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 20px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: #f9f9f9;
+  text-align: left;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.cost-display {
+  background: #e7f3ff;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 15px 0;
+  text-align: center;
+}
+
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 15px 0;
+  border: 1px solid #f5c6cb;
+}
+
+.submit-button {
+  width: 100%;
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.submit-button:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.submit-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.back-button {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+
+.back-button:hover {
+  background: #545b62;
+}
+
+/* Bookings List */
+.bookings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.booking-card {
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  background: #f9f9f9;
+  text-align: left;
+}
+
+.booking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 10px;
+}
+
+.booking-header h3 {
+  margin: 0;
+  color: #333;
+}
+
+.status {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.status.confirmed {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status.cancelled {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.booking-details p {
+  margin: 5px 0;
+}
+
+.cancel-button {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.cancel-button:hover {
+  background: #c82333;
+}
+
+.error {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 15px;
+  border-radius: 4px;
+  border: 1px solid #f5c6cb;
+  margin: 20px 0;
+}
+
+// src/index.js
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+// src/index.css
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f5f5f5;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+// src/setupTests.js
+import '@testing-library/jest-dom';
+
+// Your test file goes in:
+// src/components/__tests__/BookingForm.test.js
